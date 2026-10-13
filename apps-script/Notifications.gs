@@ -949,3 +949,7 @@ function escapeHtml_(input) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+function authorizeEmailService() {
+  var quota = MailApp.getRemainingDailyQuota();
+  Logger.log('Email permission authorized successfully! Remaining emails today: ' + quota);
+}
