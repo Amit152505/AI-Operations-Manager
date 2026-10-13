@@ -158,33 +158,6 @@ function setupTaskMaster(sheet) {
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   applySheetHeaderStyle(sheet, headers.length);
   sheet.setFrozenRows(1);
-
-  var maxRows = Math.max(sheet.getMaxRows() - 1, 50);
-
-  // Data Validation - Column E (Frequency Type): Dropdown
-  var freqRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['Daily', '7-Day', '15-Day', '30-Day'], true)
-    .setAllowInvalid(false)
-    .build();
-  sheet.getRange(2, TM.FREQ_TYPE, maxRows, 1).setDataValidation(freqRule);
-
-  // Data Validation - Column H (Required Proof Type): Dropdown
-  var proofRule = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['Ticket ID', 'Daily Confirmation'], true)
-    .setAllowInvalid(false)
-    .build();
-  sheet.getRange(2, TM.PROOF_TYPE, maxRows, 1).setDataValidation(proofRule);
-
-  // Data Validation - Column L (Task Active): Checkbox
-  var activeRule = SpreadsheetApp.newDataValidation()
-    .requireCheckbox()
-    .build();
-  sheet.getRange(2, TM.ACTIVE, maxRows, 1).setDataValidation(activeRule);
-
-  // Set number formats for date and timestamp columns
-  sheet.getRange(2, TM.CURRENT_DUE, maxRows, 1).setNumberFormat('yyyy-mm-dd');
-  sheet.getRange(2, TM.LAST_DONE_AT, maxRows, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
-  sheet.getRange(2, TM.NEXT_DUE, maxRows, 1).setNumberFormat('yyyy-mm-dd');
 }
 
 /**
@@ -466,17 +439,16 @@ function addSampleTasks() {
     setupTaskMaster(sheet);
   }
 
-  // Scan existing Task IDs to avoid duplicating tasks
-  var existingIds = {};
-  var lastRow = sheet.getLastRow();
-  if (lastRow >= 2) {
-    var idValues = sheet.getRange(2, TM.TASK_ID, lastRow - 1, 1).getValues();
-    for (var i = 0; i < idValues.length; i++) {
-      var id = idValues[i][0];
-      if (id) {
-        existingIds[String(id).trim()] = true;
-      }
-    }
+  // Check if row 2 already contains TASK-001
+  var firstTaskId = String(sheet.getRange(2, TM.TASK_ID).getValue() || '').trim();
+  if (firstTaskId === 'TASK-001') {
+    Logger.log('Sample tasks already exist at row 2 of Task Master. Skipping insert.');
+    return;
+  }
+
+  // Clear any old, misplaced or blank rows from row 2 downwards
+  if (sheet.getMaxRows() >= 2) {
+    sheet.getRange(2, 1, sheet.getMaxRows() - 1, 16).clearContent().clearDataValidations();
   }
 
   // Define the 4 standard recurring operational tasks
@@ -530,40 +502,50 @@ function addSampleTasks() {
   var rowsToAdd = [];
   for (var j = 0; j < sampleTasks.length; j++) {
     var t = sampleTasks[j];
-    if (!existingIds[t.id]) {
-      rowsToAdd.push([
-        t.id,                 // Col 1: Task ID
-        t.name,               // Col 2: Task Name
-        t.employee,           // Col 3: Assigned Employee
-        t.email,              // Col 4: Employee Email
-        t.freqType,           // Col 5: Frequency Type
-        t.freqDays,           // Col 6: Frequency Days
-        t.desc,               // Col 7: Task Description
-        t.proofType,          // Col 8: Required Proof Type
-        t.dueTime,            // Col 9: Due Time
-        '',                   // Col 10: Current Due Date (populated during cycle creation)
-        '',                   // Col 11: Current Cycle ID
-        true,                 // Col 12: Task Active (Checkbox)
-        '',                   // Col 13: Last Completed At
-        '',                   // Col 14: Last Completed By
-        STATUS.UPCOMING,      // Col 15: Current Status
-        ''                    // Col 16: Next Due Date
-      ]);
-    }
+    rowsToAdd.push([
+      t.id,                 // Col 1: Task ID
+      t.name,               // Col 2: Task Name
+      t.employee,           // Col 3: Assigned Employee
+      t.email,              // Col 4: Employee Email
+      t.freqType,           // Col 5: Frequency Type
+      t.freqDays,           // Col 6: Frequency Days
+      t.desc,               // Col 7: Task Description
+      t.proofType,          // Col 8: Required Proof Type
+      t.dueTime,            // Col 9: Due Time
+      '',                   // Col 10: Current Due Date
+      '',                   // Col 11: Current Cycle ID
+      true,                 // Col 12: Task Active (Checkbox)
+      '',                   // Col 13: Last Completed At
+      '',                   // Col 14: Last Completed By
+      STATUS.UPCOMING,      // Col 15: Current Status
+      ''                    // Col 16: Next Due Date
+    ]);
   }
 
-  if (rowsToAdd.length > 0) {
-    var startRow = sheet.getLastRow() + 1;
-    sheet.getRange(startRow, 1, rowsToAdd.length, 16).setValues(rowsToAdd);
+  // Insert cleanly at Row 2
+  sheet.getRange(2, 1, rowsToAdd.length, 16).setValues(rowsToAdd);
 
-    // Ensure Checkbox data validation is set on Column L (Task Active)
-    var cbRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
-    sheet.getRange(startRow, TM.ACTIVE, rowsToAdd.length, 1).setDataValidation(cbRule);
+  // Apply validations and formatting directly to the inserted rows (2 to 5)
+  var freqRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Daily', '7-Day', '15-Day', '30-Day'], true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange(2, TM.FREQ_TYPE, rowsToAdd.length, 1).setDataValidation(freqRule);
 
-    Logger.log('Added ' + rowsToAdd.length + ' sample tasks to Task Master.');
-  } else {
-    Logger.log('Sample tasks already exist in Task Master. Skipping insert.');
-  }
+  var proofRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Ticket ID', 'Daily Confirmation'], true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange(2, TM.PROOF_TYPE, rowsToAdd.length, 1).setDataValidation(proofRule);
+
+  var cbRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
+  sheet.getRange(2, TM.ACTIVE, rowsToAdd.length, 1).setDataValidation(cbRule);
+
+  sheet.getRange(2, TM.CURRENT_DUE, rowsToAdd.length, 1).setNumberFormat('yyyy-mm-dd');
+  sheet.getRange(2, TM.LAST_DONE_AT, rowsToAdd.length, 1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  sheet.getRange(2, TM.NEXT_DUE, rowsToAdd.length, 1).setNumberFormat('yyyy-mm-dd');
+
+  Logger.log('Cleanly inserted 4 sample tasks into Task Master starting at row 2.');
 }
 
 /**
@@ -601,7 +583,6 @@ function createInitialCycles() {
     }
   }
 
-  // Calculate today's date normalized to 00:00:00 (using Config helper or native Date)
   var now = (typeof getNow === 'function') ? getNow() : new Date();
   var today = (typeof dateOnly === 'function') ? dateOnly(now) : new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -620,17 +601,15 @@ function createInitialCycles() {
     var dueTime   = row[TM.DUE_TIME - 1] || '17:00';
     var isActive  = row[TM.ACTIVE - 1];
 
-    // Only process tasks that are active and have a valid ID
     if (isActive === true && taskId) {
       var cycleId = String(taskId).trim() + '-C001';
 
-      if (!existingCycles[cycleId]) {
-        // 1. Update Task Master with cycle info and Due Today status
-        tmSheet.getRange(rowIndex, TM.CURRENT_DUE).setValue(today).setNumberFormat('yyyy-mm-dd');
-        tmSheet.getRange(rowIndex, TM.CYCLE_ID).setValue(cycleId);
-        tmSheet.getRange(rowIndex, TM.STATUS).setValue(STATUS.DUE_TODAY);
+      // Always ensure Task Master is updated with active cycle info
+      tmSheet.getRange(rowIndex, TM.CURRENT_DUE).setValue(today).setNumberFormat('yyyy-mm-dd');
+      tmSheet.getRange(rowIndex, TM.CYCLE_ID).setValue(cycleId);
+      tmSheet.getRange(rowIndex, TM.STATUS).setValue(STATUS.DUE_TODAY);
 
-        // 2. Append operational row to Action Center
+      if (!existingCycles[cycleId]) {
         var acRow = [
           cycleId,           // Col 1 (AC.CYCLE_ID)
           taskId,            // Col 2 (AC.TASK_ID)
@@ -652,10 +631,7 @@ function createInitialCycles() {
         acSheet.appendRow(acRow);
         var newAcRow = acSheet.getLastRow();
 
-        // Format Due Date cell as yyyy-mm-dd
         acSheet.getRange(newAcRow, AC.DUE_DATE).setNumberFormat('yyyy-mm-dd');
-
-        // Insert checkbox validation for Completion Confirmed
         acSheet.getRange(newAcRow, AC.CONFIRMED).setDataValidation(checkboxRule).setValue(false);
 
         existingCycles[cycleId] = true;
